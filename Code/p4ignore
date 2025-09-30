@@ -1,0 +1,48 @@
+# Binaries générés (EXE, DLL, objets compilés)
+Binaries/
+**/Binaries/
+
+# Fichiers intermédiaires de compilation
+Intermediate/
+**/Intermediate/
+
+# Builds locaux et de test
+Saved/
+**/Saved/
+DerivedDataCache/
+**/DerivedDataCache/
+LocalBuilds/
+**/LocalBuilds/
+
+# Fichiers générés par Visual Studio
+*.sdf
+*.opensdf
+*.VC.db
+*.VC.opendb
+*.vscode/
+*.vs/
+
+# Fichiers temporaires de l’éditeur
+*.log
+*.tmp
+*.tmp.*
+*.obj
+*.pch
+*.pdb
+
+# Configurations locales et générées automatiquement
+*.user
+*.userprefs
+*.ncb
+*.suo
+*.sln.docstates
+*.suo
+
+# Mac/Unix
+.DS_Store
+Thumbs.db
+
+# Caches spécifiques Unreal
+*.pyc
+*.pyo
+*.iobj
