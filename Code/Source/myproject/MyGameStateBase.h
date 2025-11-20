@@ -14,7 +14,7 @@ public:
 	AMyGameStateBase();
 
 	// Nombre actuel de tâches
-	UPROPERTY(ReplicatedUsing = OnRep_Nbtache, BlueprintReadOnly)
+	UPROPERTY(Replicated, BlueprintReadWrite)
 	int32 Nbtache;
 
 	// Nombre maximum de tâches (fixé au spawn des boutons)
@@ -25,11 +25,25 @@ public:
 	UFUNCTION(Server, Reliable)
 	void ServerModifyNbtache(AMyPlayerState* PlayerState);
 
-	UFUNCTION()
-	void OnRep_Nbtache();
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
+	UPROPERTY(Replicated, BlueprintReadWrite)
+	int32 LobbyCountdown;
+
+	UPROPERTY(Replicated, BlueprintReadWrite)
+	int32 GameCountdown;
+
+
+	FTimerHandle LobbyTimerHandle;
+	FTimerHandle GameTimerHandle;
+
+	void LobbyCountdownTick();
+	void GameCountdownTick();
+	void StopGameCountdownTimer();
+
 protected:
 	virtual void BeginPlay() override;
+
+
 };

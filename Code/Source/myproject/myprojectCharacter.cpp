@@ -1,6 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
-#include "myprojectCharacter.h"
+﻿#include "myprojectCharacter.h"
 #include "Engine/LocalPlayer.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -11,123 +9,226 @@
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
 #include "myproject.h"
+#include "RewindableComponent.h"
+#include "RewindSubsystem.h"
+#include "MyPlayerState.h"
+#include "myprojectPlayerController.h"
+#include "DrawDebugHelpers.h"
+
+DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 
 AmyprojectCharacter::AmyprojectCharacter()
 {
-	// Set size for collision capsule
-	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
-		
-	// Don't rotate when the controller rotates. Let that just affect the camera.
-	bUseControllerRotationPitch = false;
-	bUseControllerRotationYaw = false;
-	bUseControllerRotationRoll = false;
+    GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
 
-	// Configure character movement
-	GetCharacterMovement()->bOrientRotationToMovement = true;
-	GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f);
+    bUseControllerRotationPitch = false;
+    bUseControllerRotationYaw = false;
+    bUseControllerRotationRoll = false;
 
-	// Note: For faster iteration times these variables, and many more, can be tweaked in the Character Blueprint
-	// instead of recompiling to adjust them
-	GetCharacterMovement()->JumpZVelocity = 500.f;
-	GetCharacterMovement()->AirControl = 0.35f;
-	GetCharacterMovement()->MaxWalkSpeed = 500.f;
-	GetCharacterMovement()->MinAnalogWalkSpeed = 20.f;
-	GetCharacterMovement()->BrakingDecelerationWalking = 2000.f;
-	GetCharacterMovement()->BrakingDecelerationFalling = 1500.0f;
+    GetCharacterMovement()->bOrientRotationToMovement = true;
+    GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f);
+    GetCharacterMovement()->JumpZVelocity = 500.f;
+    GetCharacterMovement()->AirControl = 0.35f;
+    GetCharacterMovement()->MaxWalkSpeed = 500.f;
+    GetCharacterMovement()->MinAnalogWalkSpeed = 20.f;
+    GetCharacterMovement()->BrakingDecelerationWalking = 2000.f;
+    GetCharacterMovement()->BrakingDecelerationFalling = 1500.0f;
 
-	// Create a camera boom (pulls in towards the player if there is a collision)
-	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
-	CameraBoom->SetupAttachment(RootComponent);
-	CameraBoom->TargetArmLength = 400.0f;
-	CameraBoom->bUsePawnControlRotation = true;
+    // Creation de RewindCapsule
+    RewindCapsule = CreateDefaultSubobject<URewindableComponent>(TEXT("RewindCapsule"));
+    RewindCapsule->SetupAttachment(GetCapsuleComponent());
+    RewindCapsule->SetCapsuleRadius(GetCapsuleComponent()->GetScaledCapsuleRadius() * 1.15f);
+    RewindCapsule->SetCapsuleHalfHeight(GetCapsuleComponent()->GetScaledCapsuleHalfHeight() * 1.15f);
 
-	// Create a follow camera
-	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
-	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
-	FollowCamera->bUsePawnControlRotation = false;
+    CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
+    CameraBoom->SetupAttachment(RootComponent);
+    CameraBoom->TargetArmLength = 400.0f;
+    CameraBoom->bUsePawnControlRotation = true;
 
-	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
-	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
+    FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
+    FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
+    FollowCamera->bUsePawnControlRotation = false;
 }
 
 void AmyprojectCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
-	// Set up action bindings
-	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent)) {
-		
-		// Jumping
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacter::Jump);
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
+    if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent))
+    {
+        // Jumping
+        EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacter::Jump);
+        EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
 
-		// Moving
-		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AmyprojectCharacter::Move);
-		EnhancedInputComponent->BindAction(MouseLookAction, ETriggerEvent::Triggered, this, &AmyprojectCharacter::Look);
+        // Moving
+        EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AmyprojectCharacter::Move);
+        EnhancedInputComponent->BindAction(MouseLookAction, ETriggerEvent::Triggered, this, &AmyprojectCharacter::Look);
 
-		// Looking
-		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &AmyprojectCharacter::Look);
-	}
-	else
-	{
-		UE_LOG(Logmyproject, Error, TEXT("'%s' Failed to find an Enhanced Input component! This template is built to use the Enhanced Input system. If you intend to use the legacy system, then you will need to update this C++ file."), *GetNameSafe(this));
-	}
+        // Looking
+        EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &AmyprojectCharacter::Look);
+
+        // Shooting
+        PlayerInputComponent->BindKey(EKeys::F, IE_Pressed, this, &AmyprojectCharacter::Fire);
+        PlayerInputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &AmyprojectCharacter::Fire);
+    }
 }
 
 void AmyprojectCharacter::Move(const FInputActionValue& Value)
 {
-	// input is a Vector2D
-	FVector2D MovementVector = Value.Get<FVector2D>();
-
-	// route the input
-	DoMove(MovementVector.X, MovementVector.Y);
+    FVector2D MovementVector = Value.Get<FVector2D>();
+    DoMove(MovementVector.X, MovementVector.Y);
 }
 
 void AmyprojectCharacter::Look(const FInputActionValue& Value)
 {
-	// input is a Vector2D
-	FVector2D LookAxisVector = Value.Get<FVector2D>();
-
-	// route the input
-	DoLook(LookAxisVector.X, LookAxisVector.Y);
+    FVector2D LookAxisVector = Value.Get<FVector2D>();
+    DoLook(LookAxisVector.X, LookAxisVector.Y);
 }
 
 void AmyprojectCharacter::DoMove(float Right, float Forward)
 {
-	if (GetController() != nullptr)
-	{
-		// find out which way is forward
-		const FRotator Rotation = GetController()->GetControlRotation();
-		const FRotator YawRotation(0, Rotation.Yaw, 0);
+    if (GetController() != nullptr)
+    {
+        const FRotator Rotation = GetController()->GetControlRotation();
+        const FRotator YawRotation(0, Rotation.Yaw, 0);
 
-		// get forward vector
-		const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
-
-		// get right vector 
-		const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
-
-		// add movement 
-		AddMovementInput(ForwardDirection, Forward);
-		AddMovementInput(RightDirection, Right);
-	}
+        const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+        const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
+ 
+        AddMovementInput(ForwardDirection, Forward);
+        AddMovementInput(RightDirection, Right);
+    }
 }
 
 void AmyprojectCharacter::DoLook(float Yaw, float Pitch)
 {
-	if (GetController() != nullptr)
-	{
-		// add yaw and pitch input to controller
-		AddControllerYawInput(Yaw);
-		AddControllerPitchInput(Pitch);
-	}
+    if (GetController() != nullptr)
+    {
+        AddControllerYawInput(Yaw);
+        AddControllerPitchInput(Pitch);
+    }
 }
 
 void AmyprojectCharacter::DoJumpStart()
 {
-	// signal the character to jump
-	Jump();
+    Jump();
 }
 
 void AmyprojectCharacter::DoJumpEnd()
 {
-	// signal the character to stop jumping
-	StopJumping();
+    StopJumping();
+}
+
+void AmyprojectCharacter::Fire()
+{
+    UWorld* World = GetWorld();
+    if (!World || !IsLocallyControlled())
+        return;
+
+    if (!FollowCamera)
+        return;
+
+    FVector StartLocation = FollowCamera->GetComponentLocation();
+    FRotator CameraRotation = FollowCamera->GetComponentRotation();
+    FVector EndLocation = StartLocation + (CameraRotation.Vector() * ShootRange);
+
+    FHitResult HitResult;
+    FCollisionQueryParams Params;
+    Params.AddIgnoredActor(this);
+    Params.bTraceComplex = false;
+
+    bool bHit = World->LineTraceSingleByChannel(
+        HitResult,
+        StartLocation,
+        EndLocation,
+        ECC_Pawn,
+        Params
+    );
+
+    if (bShowShootDebug)
+    {
+        FColor DebugColor = bHit ? FColor::Red : FColor::Green;
+        DrawDebugLine(
+            World,
+            StartLocation,
+            bHit ? HitResult.Location : EndLocation,
+            DebugColor,
+            false,
+            DebugLineDuration,
+            0,
+            2.0f
+        );
+
+        if (bHit)
+        {
+            DrawDebugSphere(
+                World,
+                HitResult.Location,
+                10.0f,
+                12,
+                FColor::Red,
+                false,
+                DebugLineDuration
+            );
+        }
+    }
+
+    // Vérifier si on a touché un joueur
+    AMyPlayerState* TargetPS = nullptr;
+    if (bHit)
+    {
+        if (ACharacter* HitCharacter = Cast<ACharacter>(HitResult.GetActor()))
+        {
+            TargetPS = HitCharacter->GetPlayerState<AMyPlayerState>();
+        }
+    }
+
+    if (TargetPS)
+    {
+        // Envoyer RPC avec toutes les informations
+        AmyprojectPlayerController* PC = Cast<AmyprojectPlayerController>(GetController());
+        float EstimatedServerTime = PC ? PC->GetServerWorldTime() : World->GetTimeSeconds();
+
+        ServerConfirmHit(EstimatedServerTime, StartLocation, CameraRotation, TargetPS);
+
+        UE_LOG(LogTemplateCharacter, Log, TEXT("Client Fire: Hit %s @ %.3f"),
+            *TargetPS->GetPlayerName(), EstimatedServerTime);
+    }
+}
+
+void AmyprojectCharacter::ServerConfirmHit_Implementation(
+    float ClientTimestamp,
+    const FVector& StartLocation,
+    const FRotator& Rotation,
+    APlayerState* TargetPlayerState)
+{
+    UWorld* World = GetWorld();
+    if (!World || !TargetPlayerState)
+        return;
+
+    AMyPlayerState* ShooterPS = GetPlayerState<AMyPlayerState>();
+    if (!ShooterPS)
+        return;
+
+    // Demander au subsystème de valider le tir
+    if (URewindSubsystem* RewindSubsystem = World->GetSubsystem<URewindSubsystem>())
+    {
+        FHitResult ValidationResult;
+
+        bool bShotValid = RewindSubsystem->ValidateShot(
+            ClientTimestamp,
+            StartLocation,
+            Rotation,
+            ShootRange,
+            TargetPlayerState,
+            ShooterPS,
+            ValidationResult
+        );
+
+        if (bShotValid)
+        {
+            UE_LOG(LogTemplateCharacter, Warning, TEXT(" SHOT CONFIRMED: %s hit %s"),
+                *ShooterPS->GetPlayerName(),
+                *TargetPlayerState->GetPlayerName());
+
+        }
+    }
 }

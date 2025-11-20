@@ -24,8 +24,17 @@ protected:
     UPROPERTY(EditAnywhere, Category = "Bouton")
     TSubclassOf<ABouton> BoutonClass;
 
-private:
+public:
     void ChangeMap();
     void AssignRolesOnLevel();
     void SpawnBoutonsOnLevel();
+    void ReturnToLobby();
+    void CheckWinCondition();
+
+private:
+    UPROPERTY(EditDefaultsOnly, Category = "Game Flow")
+    float GameDuration = 120.0f; // 2 minutes
+
+    UPROPERTY(EditDefaultsOnly, Category = "Game Flow")
+    float LobbyCountdownDuration = 30.0f; // 30 secondes
 };

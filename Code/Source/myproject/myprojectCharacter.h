@@ -1,8 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #pragma once
 
 #include "CoreMinimal.h"
+#include "RewindableComponent.h"
 #include "GameFramework/Character.h"
 #include "Logging/LogMacros.h"
 #include "myprojectCharacter.generated.h"
@@ -14,83 +13,82 @@ struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
 
-/**
- *  A simple player-controllable third person character
- *  Implements a controllable orbiting camera
- */
+
 UCLASS(abstract)
 class AmyprojectCharacter : public ACharacter
 {
-	GENERATED_BODY()
+    GENERATED_BODY()
 
-	/** Camera boom positioning the camera behind the character */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
-	USpringArmComponent* CameraBoom;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+    USpringArmComponent* CameraBoom;
 
-	/** Follow camera */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
-	UCameraComponent* FollowCamera;
-	
-protected:
-
-	/** Jump Input Action */
-	UPROPERTY(EditAnywhere, Category="Input")
-	UInputAction* JumpAction;
-
-	/** Move Input Action */
-	UPROPERTY(EditAnywhere, Category="Input")
-	UInputAction* MoveAction;
-
-	/** Look Input Action */
-	UPROPERTY(EditAnywhere, Category="Input")
-	UInputAction* LookAction;
-
-	/** Mouse Look Input Action */
-	UPROPERTY(EditAnywhere, Category="Input")
-	UInputAction* MouseLookAction;
-
-public:
-
-	/** Constructor */
-	AmyprojectCharacter();	
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+    UCameraComponent* FollowCamera;
 
 protected:
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Rewind", meta = (AllowPrivateAccess = "true"))
+    TObjectPtr<URewindableComponent> RewindCapsule;
 
-	/** Initialize input action bindings */
-	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+    UPROPERTY(EditAnywhere, Category = "Input")
+    UInputAction* JumpAction;
+
+    UPROPERTY(EditAnywhere, Category = "Input")
+    UInputAction* MoveAction;
+
+    UPROPERTY(EditAnywhere, Category = "Input")
+    UInputAction* LookAction;
+
+    UPROPERTY(EditAnywhere, Category = "Input")
+    UInputAction* MouseLookAction;
+
+    /** Portée de tir */
+    UPROPERTY(EditAnywhere, Category = "Shooting")
+    float ShootRange = 10000.0f;
+
+    /** Afficher les lignes de debug pour la prise de vue */
+    UPROPERTY(EditAnywhere, Category = "Shooting")
+    bool bShowShootDebug = true;
+
+    /** Durée de la ligne de debug */
+    UPROPERTY(EditAnywhere, Category = "Shooting")
+    float DebugLineDuration = 2.0f;
+
+public:
+    AmyprojectCharacter();
 
 protected:
+    virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
-	/** Called for movement input */
-	void Move(const FInputActionValue& Value);
+    void Move(const FInputActionValue& Value);
 
-	/** Called for looking input */
-	void Look(const FInputActionValue& Value);
+    void Look(const FInputActionValue& Value);
 
-public:
+    /** Fonction de tire */
+    void Fire();
 
-	/** Handles move inputs from either controls or UI interfaces */
-	UFUNCTION(BlueprintCallable, Category="Input")
-	virtual void DoMove(float Right, float Forward);
-
-	/** Handles look inputs from either controls or UI interfaces */
-	UFUNCTION(BlueprintCallable, Category="Input")
-	virtual void DoLook(float Yaw, float Pitch);
-
-	/** Handles jump pressed inputs from either controls or UI interfaces */
-	UFUNCTION(BlueprintCallable, Category="Input")
-	virtual void DoJumpStart();
-
-	/** Handles jump pressed inputs from either controls or UI interfaces */
-	UFUNCTION(BlueprintCallable, Category="Input")
-	virtual void DoJumpEnd();
+    /** Server RPC */
+    UFUNCTION(Server, Reliable)
+    void ServerConfirmHit(
+        float ClientTimestamp,
+        const FVector& StartLocation,
+        const FRotator& Rotation,
+        APlayerState* TargetPlayerState
+    );
 
 public:
+    UFUNCTION(BlueprintCallable, Category = "Input")
+    virtual void DoMove(float Right, float Forward);
 
-	/** Returns CameraBoom subobject **/
-	FORCEINLINE class USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
+    UFUNCTION(BlueprintCallable, Category = "Input")
+    virtual void DoLook(float Yaw, float Pitch);
 
-	/** Returns FollowCamera subobject **/
-	FORCEINLINE class UCameraComponent* GetFollowCamera() const { return FollowCamera; }
+    UFUNCTION(BlueprintCallable, Category = "Input")
+    virtual void DoJumpStart();
+
+    UFUNCTION(BlueprintCallable, Category = "Input")
+    virtual void DoJumpEnd();
+
+    FORCEINLINE class USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
+
+    FORCEINLINE class UCameraComponent* GetFollowCamera() const { return FollowCamera; }
 };
-

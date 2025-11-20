@@ -1,4 +1,4 @@
-#include "myprojectPlayerController.h"
+﻿#include "myprojectPlayerController.h"
 #include "EnhancedInputSubsystems.h"
 #include "EnhancedInputComponent.h"
 #include "Engine/LocalPlayer.h"
@@ -10,12 +10,16 @@
 #include "Bouton.h"
 #include "MyPlayerState.h"
 #include "MyGameStateBase.h"
+#include "GameFramework/Character.h"
+#include "Camera/CameraComponent.h"
+#include "DrawDebugHelpers.h"
+#include "RewindableComponent.h"
+#include "RewindSubsystem.h"
 
 void AmyprojectPlayerController::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// only spawn touch controls on local player controllers
 	if (SVirtualJoystick::ShouldDisplayTouchInterface() && IsLocalPlayerController())
 	{
 		MobileControlsWidget = CreateWidget<UUserWidget>(this, MobileControlsWidgetClass);
@@ -35,7 +39,6 @@ void AmyprojectPlayerController::SetupInputComponent()
 {
 	Super::SetupInputComponent();
 
-	// Mapping contexts
 	if (IsLocalPlayerController())
 	{
 		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
@@ -55,8 +58,8 @@ void AmyprojectPlayerController::SetupInputComponent()
 		}
 	}
 
-	// Bind touche P
 	InputComponent->BindKey(EKeys::P, IE_Pressed, this, &AmyprojectPlayerController::Interact);
+
 }
 
 void AmyprojectPlayerController::Interact()
@@ -70,7 +73,7 @@ void AmyprojectPlayerController::ServerInteract_Implementation()
 	APawn* MyPawn = GetPawn();
 	if (!MyPawn) return;
 
-	// V�rifier proximit� avec un bouton
+	// Vérifier proximité avec un bouton
 	TArray<AActor*> Boutons;
 	UGameplayStatics::GetAllActorsOfClass(GetWorld(), ABouton::StaticClass(), Boutons);
 
@@ -89,4 +92,76 @@ void AmyprojectPlayerController::ServerInteract_Implementation()
 			}
 		}
 	}
+}
+
+float AmyprojectPlayerController::GetServerWorldTimeDelta() const
+{
+	return ServerWorldTimeDelta;
+}
+
+float AmyprojectPlayerController::GetServerWorldTime() const
+{
+	return GetWorld()->GetTimeSeconds() + ServerWorldTimeDelta;
+}
+
+void AmyprojectPlayerController::PostNetInit()
+{
+	Super::PostNetInit();
+
+	if (GetLocalRole() != ROLE_Authority)
+	{
+		RequestWorldTime_Internal();
+
+		if (NetworkClockUpdateFrequency > 0.f)
+		{
+			FTimerHandle TimerHandle;
+			GetWorldTimerManager().SetTimer(
+				TimerHandle,
+				this,
+				&AmyprojectPlayerController::RequestWorldTime_Internal,
+				NetworkClockUpdateFrequency,
+				true
+			);
+		}
+	}
+}
+
+void AmyprojectPlayerController::RequestWorldTime_Internal()
+{
+	ServerRequestWorldTime(GetWorld()->GetTimeSeconds());
+}
+
+void AmyprojectPlayerController::ClientUpdateWorldTime_Implementation(float ClientTimestamp, float ServerTimestamp)
+{
+	const float RoundTripTime = GetWorld()->GetTimeSeconds() - ClientTimestamp;
+	RTTCircularBuffer.Add(RoundTripTime);
+
+	float AdjustedRTT = 0.f;
+
+	if (RTTCircularBuffer.Num() >= 10)
+	{
+		TArray<float> Tmp = RTTCircularBuffer;
+		Tmp.Sort();
+
+		// Moyenne des 8 valeurs médianes (ignore min et max)
+		for (int32 i = 1; i < 9; ++i)
+		{
+			AdjustedRTT += Tmp[i];
+		}
+		AdjustedRTT /= 8.f;
+
+		RTTCircularBuffer.RemoveAt(0);
+	}
+	else
+	{
+		AdjustedRTT = RoundTripTime;
+	}
+
+	ServerWorldTimeDelta = ServerTimestamp - ClientTimestamp - (AdjustedRTT / 2.f);
+}
+
+void AmyprojectPlayerController::ServerRequestWorldTime_Implementation(float ClientTimestamp)
+{
+	const float Timestamp = GetWorld()->GetTimeSeconds();
+	ClientUpdateWorldTime(ClientTimestamp, Timestamp);
 }

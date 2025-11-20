@@ -1,4 +1,5 @@
-#include "myprojectGameMode.h"
+﻿#include "myprojectGameMode.h"
+#include "MyGameStateBase.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/GameStateBase.h"
 #include "TimerManager.h"
@@ -20,30 +21,41 @@ void AmyprojectGameMode::PostLogin(APlayerController* NewPlayer)
     FString CurrentMapName = World->GetMapName();
     CurrentMapName.RemoveFromStart(World->StreamingLevelsPrefix); 
 
+    AMyGameStateBase* GS = GetGameState<AMyGameStateBase>();
     
     if (CurrentMapName.Equals("Lobby"))
     {
-        AGameStateBase* GS = GetGameState<AGameStateBase>();
+       
         if (!GS) return;
 
         int32 PlayerCount = GS->PlayerArray.Num();
-        UE_LOG(LogTemp, Warning, TEXT("Nombre de joueurs connect�s : %d"), PlayerCount);
+        UE_LOG(LogTemp, Warning, TEXT("Nombre de joueurs connectés : %d"), PlayerCount);
 
-        if (!bHasMapChanged && PlayerCount >= 4)
+        if (!bHasMapChanged && PlayerCount >= 2 && !GetWorldTimerManager().IsTimerActive(GS->LobbyTimerHandle) && HasAuthority())
         {
-            bHasMapChanged = true;
-            UE_LOG(LogTemp, Warning, TEXT("4 joueurs connect�s ! La map changera dans 3 secondes"));
+            UE_LOG(LogTemp, Warning, TEXT("2 joueurs connectés ! La map changera dans 30 secondes"));
 
-            FTimerHandle TimerHandle;
-            GetWorldTimerManager().SetTimer(TimerHandle, this, &AmyprojectGameMode::ChangeMap, 3.0f, false);
+
+            GS->LobbyCountdown = static_cast<int32>(LobbyCountdownDuration);
+
+            GetWorldTimerManager().SetTimer(
+                GS->LobbyTimerHandle,
+                GS,
+                &AMyGameStateBase::LobbyCountdownTick,
+                1.0f,
+                true
+            );
+
+            UE_LOG(LogTemp, Warning, TEXT("LobbyCountdown lancé avec %d joueurs !"), PlayerCount);
         }
+        else GS->LobbyCountdown = 0;
     }
-    
+
     else if (CurrentMapName.Equals("Level"))
     {
         if (!HasAuthority()) return;
 
-        
+        GS->GameCountdown = static_cast<int32>(GameDuration);
         AssignRolesOnLevel();
 
 
@@ -59,17 +71,16 @@ void AmyprojectGameMode::ChangeMap()
         UE_LOG(LogTemp, Warning, TEXT("ServerTravel vers %s"), *MapPath);
 
         World->ServerTravel(MapPath + "?listen");
-
         
     }
-
+    bHasMapChanged = true;
     SpawnBoutonsOnLevel();
 
 }
 
 void AmyprojectGameMode::AssignRolesOnLevel()
 {
-    AGameStateBase* GS = GetGameState<AGameStateBase>();
+    AMyGameStateBase* GS = GetGameState<AMyGameStateBase>();
     if (!GS) return;
 
     TArray<AMyPlayerState*> Players;
@@ -104,7 +115,7 @@ void AmyprojectGameMode::AssignRolesOnLevel()
     for (AMyPlayerState* PS : Players)
     {
         const TCHAR* RoleText = (PS->GetPlayerRole() == EPlayerRole::Gentil) ? TEXT("Gentil") :
-            (PS->GetPlayerRole() == EPlayerRole::Mechant) ? TEXT("M�chant") : TEXT("Mort");
+            (PS->GetPlayerRole() == EPlayerRole::Mechant) ? TEXT("Méchant") : TEXT("Mort");
         UE_LOG(LogTemp, Warning, TEXT("Joueur %s est %s"), *PS->GetPlayerName(), RoleText);
     }
 
@@ -122,7 +133,7 @@ void AmyprojectGameMode::SpawnBoutonsOnLevel()
     CurrentMapName.RemoveFromStart(World->StreamingLevelsPrefix);
     if (!CurrentMapName.Equals("Level"))
     {
-        UE_LOG(LogTemp, Warning, TEXT("SpawnBoutons annul� : pas sur Level"));
+        UE_LOG(LogTemp, Warning, TEXT("SpawnBoutons annulé : pas sur Level"));
         return;
     }
 
@@ -145,5 +156,34 @@ void AmyprojectGameMode::SpawnBoutonsOnLevel()
                 NewBouton->MeshComp->SetMaterial(0, Mat);
             }
         }
+    }
+}
+
+void AmyprojectGameMode::ReturnToLobby()
+{
+    UWorld* World = GetWorld();
+    if (World && World->GetNetMode() == NM_ListenServer)
+    {
+        FString MapPath = "/Game/Lobby";
+        UE_LOG(LogTemp, Warning, TEXT("ServerTravel vers %s"), *MapPath);
+
+        World->ServerTravel(MapPath + "?listen");
+
+    }
+    bHasMapChanged = false;
+    SpawnBoutonsOnLevel();
+
+}
+
+void AmyprojectGameMode::CheckWinCondition()
+{
+    AMyGameStateBase* GS = GetGameState<AMyGameStateBase>();
+    if (!GS || !HasAuthority()) return;
+
+    if (GS-> Nbtache <= 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Toutes les tâches terminées → WIN ! Retour au lobby"));
+        GS->StopGameCountdownTimer();
+        ReturnToLobby();
     }
 }
